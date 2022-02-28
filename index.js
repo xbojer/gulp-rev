@@ -172,4 +172,56 @@ plugin.manifest = (path_, options) => {
 	});
 };
 
+plugin.hashManifest = (pth, opts) => {
+	if (typeof pth === 'string') {
+		pth = {path: pth};
+	}
+
+	opts = Object.assign({
+		path: 'rev-manifest.json',
+		merge: false,
+		transformer: JSON
+	}, opts, pth);
+
+	let manifest = {};
+
+	return through.obj((file, enc, cb) => {
+		// Ignore all non-rev'd files
+		if (!file.path || !file.revOrigPath) {
+			cb();
+			return;
+		}
+
+		const revisionedFile = file.revHash;
+		const originalFilePath = relPath(path.resolve(file.cwd, file.base), path.resolve(file.cwd, file.revOrigPath));
+		const originalFile = path.join(path.dirname(originalFilePath), path.basename(file.revOrigPath)).replace(/\\/g, '/');
+
+		manifest[originalFile] = revisionedFile;
+
+		cb();
+	}, function (cb) {
+		// No need to write a manifest file if there's nothing to manifest
+		if (Object.keys(manifest).length === 0) {
+			cb();
+			return;
+		}
+
+		getManifestFile(opts).then(manifestFile => {
+			if (opts.merge && !manifestFile.isNull()) {
+				let oldManifest = {};
+
+				try {
+					oldManifest = opts.transformer.parse(manifestFile.contents.toString());
+				} catch (_) {}
+
+				manifest = Object.assign(oldManifest, manifest);
+			}
+
+			manifestFile.contents = Buffer.from(opts.transformer.stringify(sortKeys(manifest), null, '  '));
+			this.push(manifestFile);
+			cb();
+		}).catch(cb);
+	});
+};
+
 module.exports = plugin;
