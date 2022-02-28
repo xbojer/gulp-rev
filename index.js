@@ -195,7 +195,7 @@ plugin.hashManifest = (path_, options) => {
 		}
 
 		const originalPath = relativePath(path.resolve(file.cwd, file.base), path.resolve(file.cwd, file.revOrigPath));
-		const originalFile = path.join(path.dirname(revisionedFile), path.basename(file.revOrigPath)).replace(/\\/g, '/');
+		const originalFile = path.join(path.dirname(originalPath), path.basename(file.revOrigPath)).replace(/\\/g, '/');
 
 		manifest[originalFile] = file.revHash;
 
