@@ -172,55 +172,62 @@ plugin.manifest = (path_, options) => {
 	});
 };
 
-plugin.hashManifest = (pth, opts) => {
-	if (typeof pth === 'string') {
-		pth = {path: pth};
+plugin.hashManifest = (path_, options) => {
+	if (typeof path_ === 'string') {
+		path_ = {path: path_};
 	}
 
-	opts = Object.assign({
+	options = {
 		path: 'rev-manifest.json',
 		merge: false,
-		transformer: JSON
-	}, opts, pth);
+		transformer: JSON,
+		...options,
+		...path_
+	};
 
 	let manifest = {};
 
-	return through.obj((file, enc, cb) => {
+	return through.obj((file, encoding, callback) => {
 		// Ignore all non-rev'd files
 		if (!file.path || !file.revOrigPath) {
-			cb();
+			callback();
 			return;
 		}
 
-		const revisionedFile = file.revHash;
-		const originalFilePath = relPath(path.resolve(file.cwd, file.base), path.resolve(file.cwd, file.revOrigPath));
-		const originalFile = path.join(path.dirname(originalFilePath), path.basename(file.revOrigPath)).replace(/\\/g, '/');
+		const originalPath = relativePath(path.resolve(file.cwd, file.base), path.resolve(file.cwd, file.revOrigPath));
+		const originalFile = path.join(path.dirname(revisionedFile), path.basename(file.revOrigPath)).replace(/\\/g, '/');
 
-		manifest[originalFile] = revisionedFile;
+		manifest[originalFile] = file.revHash;
 
-		cb();
-	}, function (cb) {
+		callback();
+	}, function (callback) {
 		// No need to write a manifest file if there's nothing to manifest
 		if (Object.keys(manifest).length === 0) {
-			cb();
+			callback();
 			return;
 		}
 
-		getManifestFile(opts).then(manifestFile => {
-			if (opts.merge && !manifestFile.isNull()) {
-				let oldManifest = {};
+		(async () => {
+			try {
+				const manifestFile = await getManifestFile(options);
 
-				try {
-					oldManifest = opts.transformer.parse(manifestFile.contents.toString());
-				} catch (_) {}
+				if (options.merge && !manifestFile.isNull()) {
+					let oldManifest = {};
 
-				manifest = Object.assign(oldManifest, manifest);
+					try {
+						oldManifest = options.transformer.parse(manifestFile.contents.toString());
+					} catch (_) {}
+
+					manifest = Object.assign(oldManifest, manifest);
+				}
+
+				manifestFile.contents = Buffer.from(options.transformer.stringify(sortKeys(manifest), undefined, '  '));
+				this.push(manifestFile);
+				callback();
+			} catch (error) {
+				callback(error);
 			}
-
-			manifestFile.contents = Buffer.from(opts.transformer.stringify(sortKeys(manifest), null, '  '));
-			this.push(manifestFile);
-			cb();
-		}).catch(cb);
+		})();
 	});
 };
 
